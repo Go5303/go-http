@@ -1,27 +1,32 @@
 package http
 
 import (
+	"bytes"
 	"crypto/tls"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
-type GetRequest struct {
+type PostRequest struct {
 	RequestUrl         string
 	Header             map[string]string
+	FormData           map[string]string
+	BodyContent        string
 	InsecureSkipVerify bool
 	TimeOut            int64
 }
 
-type GetResponse struct {
+type PostResponse struct {
 	HttpCode int
 	Header   http.Header
 	Content  string
 	Error    error
 }
 
-func (request *GetRequest) Get() *GetResponse {
+func (request *PostRequest) Post() *PostResponse {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: request.InsecureSkipVerify},
 	}
@@ -33,17 +38,28 @@ func (request *GetRequest) Get() *GetResponse {
 		Timeout:   time.Second * time.Duration(request.TimeOut),
 	}
 
-	response := new(GetResponse)
+	var req = new(http.Request)
+	var err error
+	if len(request.FormData) > 0 {
+		paramData := url.Values{}
+		for k, v := range request.FormData {
+			paramData.Set(k, v)
+		}
+		req, err = http.NewRequest("POST", request.RequestUrl, strings.NewReader(paramData.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	} else {
+		bodyReader := new(bytes.Buffer)
+		if len(request.BodyContent) > 0 {
+			bodyReader = bytes.NewBuffer([]byte(request.BodyContent))
+		}
+		req, err = http.NewRequest("POST", request.RequestUrl, bodyReader)
+		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	}
+	response := new(PostResponse)
 	response.HttpCode = http.StatusNotFound
-	req, err := http.NewRequest("GET", request.RequestUrl, nil)
 	if err != nil {
 		response.Error = err
 		return response
-	}
-	if len(request.Header) > 0 {
-		for k, v := range request.Header {
-			req.Header.Set(k, v)
-		}
 	}
 
 	resp, err := client.Do(req)
